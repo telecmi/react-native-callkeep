@@ -6,4 +6,29 @@
                      android:maxSdkVersion="29" />
     <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
     <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+
+    <!-- TeleCMI fork addition: everything the ConnectionService needs, merged
+         into the app automatically so integrators declare NOTHING by hand.
+         Upstream never declared the service in its library manifest, so every
+         app crashed at startup (Telecom SecurityException: "Registering a
+         PhoneAccount requires ... BIND_TELECOM_CONNECTION_SERVICE") until the
+         block was hand-copied from documentation. An app can still override or
+         remove any of this with tools:node in its own manifest. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
+    <application>
+        <service
+            android:name="io.wazo.callkeep.VoiceConnectionService"
+            android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE"
+            android:foregroundServiceType="phoneCall|microphone"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.telecom.ConnectionService" />
+            </intent-filter>
+        </service>
+    </application>
 </manifest>
