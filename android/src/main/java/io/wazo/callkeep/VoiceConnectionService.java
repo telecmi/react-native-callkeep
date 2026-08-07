@@ -212,6 +212,24 @@ public class VoiceConnectionService extends ConnectionService {
             this.checkForAppReachability(callUUID, timeout);
         }
 
+        // Optional native ring timeout (setup option `ringTimeout`, ms): ends a
+        // still-RINGING call from the OS side. JS-level backstops die with the
+        // headless context after a push wake-up, and if the device also lost
+        // network the server's cancel push never arrives — without this the
+        // ring is infinite.
+        Integer ringTimeout = settings.hasKey("ringTimeout") ? settings.getInt("ringTimeout") : null;
+        if (ringTimeout != null && ringTimeout > 0) {
+            final Connection ringingConnection = incomingCallConnection;
+            final String ringingUuid = callUUID;
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                if (ringingConnection.getState() == Connection.STATE_RINGING) {
+                    Log.w(TAG, "[VoiceConnectionService] ring timeout (" + ringTimeout + " ms) — ending unanswered call " + ringingUuid);
+                    ringingConnection.setDisconnected(new DisconnectCause(DisconnectCause.MISSED));
+                    ringingConnection.destroy();
+                }
+            }, ringTimeout);
+        }
+
         return incomingCallConnection;
     }
 

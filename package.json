@@ -1,7 +1,7 @@
 {
   "name": "@telecmi/react-native-callkeep",
-  "version": "4.3.17",
-  "description": "react-native-callkeep 4.3.16 with the duplicate @ReactMethod fix (Android / RN 0.76+ crash at startup). Ships as a dependency of @telecmi/piopiy-native — apps install nothing and patch nothing. Fork of https://github.com/react-native-webrtc/react-native-callkeep (ISC).",
+  "version": "4.3.18",
+  "description": "react-native-callkeep 4.3.16 with the duplicate @ReactMethod fix (Android / RN 0.76+ crash at startup). Ships as a dependency of @telecmi/piopiy-native \u2014 apps install nothing and patch nothing. Fork of https://github.com/react-native-webrtc/react-native-callkeep (ISC).",
   "main": "index.js",
   "repository": {
     "type": "git",
