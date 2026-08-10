@@ -1128,6 +1128,20 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule implements Life
         }
         String appName = this.getApplicationName(context);
 
+        // Zombie sweep: a crash mid-ring leaks a RINGING call inside Telecom
+        // (system-side), which re-asserts ring UI/audio on every app start
+        // forever. With no live local connections there is nothing legitimate
+        // to lose — dropping the account makes Telecom discard its calls, and
+        // it is re-registered immediately below.
+        if (VoiceConnectionService.currentConnections.isEmpty()) {
+            try {
+                telecomManager.unregisterPhoneAccount(handle);
+                Log.d(TAG, "[RNCallKeepModule] phone account re-created (zombie-call sweep)");
+            } catch (Throwable t) {
+                Log.w(TAG, "[RNCallKeepModule] zombie sweep unregister failed", t);
+            }
+        }
+
         PhoneAccount.Builder builder = new PhoneAccount.Builder(handle, appName);
         if (isSelfManaged()) {
             builder.setCapabilities(PhoneAccount.CAPABILITY_SELF_MANAGED);
