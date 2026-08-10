@@ -712,10 +712,6 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule implements Life
     }
 
     @ReactMethod
-    private android.app.Activity getCurrentReactActivity() {
-        try { return getCurrentActivity(); } catch (Throwable t) { return null; }
-    }
-
     @ReactMethod
     public void setActivityShowWhenLocked(boolean show) {
         android.app.Activity activity = getCurrentReactActivity();
