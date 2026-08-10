@@ -108,14 +108,15 @@ public class IncomingCallNotification {
             int piFlags = PendingIntent.FLAG_UPDATE_CURRENT
                     | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0);
 
-            // Full-screen intent: an invisible trampoline that only WAKES the
-            // screen — the lock screen then shows THIS notification with its
-            // Answer/Decline buttons (one ring surface everywhere, the
-            // WhatsApp behavior). Tapping the notification body opens the app.
-            Intent wake = new Intent(context, IncomingCallWakeActivity.class);
-            wake.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            // Full-screen intent: the library's own call screen (caller name,
+            // Answer/Decline) — what a locked device shows, the WhatsApp
+            // model. Unlocked devices get this notification as heads-up.
+            Intent fsi = new Intent(context, IncomingCallActivity.class);
+            fsi.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            fsi.putExtra(Constants.EXTRA_CALL_UUID, uuid);
+            fsi.putExtra(IncomingCallActivity.EXTRA_NAME, display);
             PendingIntent fullScreen = PendingIntent.getActivity(
-                    context, notificationId(uuid), wake, piFlags);
+                    context, notificationId(uuid), fsi, piFlags);
 
             Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
             PendingIntent openApp = null;
@@ -168,6 +169,12 @@ public class IncomingCallNotification {
 
     public static void cancel(Context context, String uuid) {
         if (uuid == null || context == null) return;
+        try {
+            Intent close = new Intent(IncomingCallActivity.ACTION_CLOSE)
+                    .setPackage(context.getPackageName())
+                    .putExtra(Constants.EXTRA_CALL_UUID, uuid);
+            context.sendBroadcast(close);
+        } catch (Throwable ignored) { }
         try {
             NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
             nm.cancel(NOTIF_TAG, notificationId(uuid));

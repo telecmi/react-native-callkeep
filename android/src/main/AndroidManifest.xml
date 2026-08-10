@@ -32,12 +32,13 @@
             </intent-filter>
         </service>
         <activity
-            android:name="io.wazo.callkeep.IncomingCallWakeActivity"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:name="io.wazo.callkeep.IncomingCallActivity"
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:taskAffinity=""
             android:launchMode="singleInstance"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
             android:exported="false" />
     <receiver
             android:name="io.wazo.callkeep.IncomingCallActionReceiver"
