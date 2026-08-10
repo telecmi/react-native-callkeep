@@ -30,8 +30,28 @@ public class IncomingCallNotification {
     public static final String ACTION_NOTIFICATION_ANSWER = "io.wazo.callkeep.NOTIFICATION_ANSWER";
     public static final String ACTION_NOTIFICATION_DECLINE = "io.wazo.callkeep.NOTIFICATION_DECLINE";
 
+    private static final String NOTIF_TAG = "connle_incoming_call";
+
     private static int notificationId(String uuid) {
         return uuid == null ? 0 : uuid.hashCode();
+    }
+
+    /** Remove EVERY incoming-call notification this library ever posted —
+     *  they are ongoing (unswipeable), and a process death mid-ring orphans
+     *  them until someone cleans up. Called before showing a new ring and at
+     *  app start. */
+    public static void cancelAll(Context context) {
+        if (context == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return;
+        try {
+            NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            for (android.service.notification.StatusBarNotification sbn : nm.getActiveNotifications()) {
+                if (NOTIF_TAG.equals(sbn.getTag())) {
+                    nm.cancel(NOTIF_TAG, sbn.getId());
+                }
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "[IncomingCallNotification] cancelAll failed", t);
+        }
     }
 
     private static void ensureChannel(Context context) {
@@ -56,6 +76,7 @@ public class IncomingCallNotification {
     public static void show(Context context, String uuid, String callerName, String number) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || uuid == null) return;
         try {
+            cancelAll(context); // one incoming ring at a time — no stacking
             ensureChannel(context);
 
             String display = (callerName != null && !callerName.isEmpty()) ? callerName
@@ -106,7 +127,7 @@ public class IncomingCallNotification {
             }
 
             NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-            nm.notify(notificationId(uuid), builder.build());
+            nm.notify(NOTIF_TAG, notificationId(uuid), builder.build());
             Log.d(TAG, "[IncomingCallNotification] shown for " + uuid);
         } catch (Throwable t) {
             Log.e(TAG, "[IncomingCallNotification] show failed", t);
@@ -117,7 +138,7 @@ public class IncomingCallNotification {
         if (uuid == null || context == null) return;
         try {
             NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-            nm.cancel(notificationId(uuid));
+            nm.cancel(NOTIF_TAG, notificationId(uuid));
         } catch (Throwable t) {
             Log.e(TAG, "[IncomingCallNotification] cancel failed", t);
         }
