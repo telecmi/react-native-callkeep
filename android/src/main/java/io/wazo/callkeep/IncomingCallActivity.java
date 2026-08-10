@@ -1,6 +1,7 @@
 package io.wazo.callkeep;
 
 import android.app.Activity;
+import android.app.KeyguardManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -34,20 +35,23 @@ public class IncomingCallActivity extends Activity {
 
     private String uuid;
     private boolean answering = false;
+    private boolean ignoreNextClose = false;
     private TextView subtitleView;
     private LinearLayout buttonsView;
     private final BroadcastReceiver closeReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) {
             String target = i.getStringExtra(Constants.EXTRA_CALL_UUID);
             if (target != null && !target.equals(uuid)) return;
-            if (answering) {
-                // Answer in progress: hold the 'Connecting…' screen — the app
-                // raises itself over the keyguard when media connects and
-                // covers us; this is just the safety net.
-                subtitleView.postDelayed(IncomingCallActivity.this::finishNoAnim, 6000);
-            } else {
-                finishNoAnim();
-            }
+            if (ignoreNextClose) { ignoreNextClose = false; return; } // our own answer-cancel
+            finishNoAnim(); // ring cancelled, or the call ended
+        }
+    };
+    // Unlock during the call: hand off into the full app UI.
+    private final BroadcastReceiver unlockReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context c, Intent i) {
+            if (!answering) return;
+            launchApp();
+            finishNoAnim();
         }
     };
 
@@ -139,33 +143,65 @@ public class IncomingCallActivity extends Activity {
         return b;
     }
 
+    private boolean isLocked() {
+        try {
+            KeyguardManager km = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+            return km != null && km.isKeyguardLocked();
+        } catch (Throwable t) { return false; }
+    }
+
+    private void launchApp() {
+        try {
+            Intent launch = getPackageManager().getLaunchIntentForPackage(getPackageName());
+            if (launch != null) {
+                launch.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                startActivity(launch);
+            }
+        } catch (Throwable ignored) { }
+    }
+
     private void act(boolean answer) {
-        if (answer) {
-            // Stay up as the 'Connecting…' screen — closing instantly leaves
-            // the user staring at a dead lock screen for the 2-4s the session
-            // and media need, which reads as 'nothing happened'.
-            answering = true;
-            subtitleView.setText("Connecting…");
-            buttonsView.setVisibility(View.GONE);
+        if (!answer) {
+            try {
+                IncomingCallNotification.cancel(this, uuid);
+                Connection conn = uuid == null ? null : VoiceConnectionService.getConnection(uuid);
+                if (conn != null) conn.onReject();
+            } catch (Throwable ignored) { }
+            finishNoAnim();
+            return;
         }
+
+        // ---- Answer ----
+        answering = true;
+        ignoreNextClose = true; // our own notification-cancel broadcast
+        subtitleView.setText("Connecting…");
+        buttonsView.removeAllViews();
+        buttonsView.addView(makeButton("Hang up", "#EF4444", v -> {
+            try {
+                Connection conn = uuid == null ? null : VoiceConnectionService.getConnection(uuid);
+                if (conn != null) conn.onDisconnect();
+            } catch (Throwable ignored) { }
+            finishNoAnim();
+        }), pill());
+
         try {
             IncomingCallNotification.cancel(this, uuid);
             Connection conn = uuid == null ? null : VoiceConnectionService.getConnection(uuid);
-            if (conn != null) {
-                if (answer) {
-                    conn.onAnswer();
-                    Intent launch = getPackageManager().getLaunchIntentForPackage(getPackageName());
-                    if (launch != null) {
-                        launch.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                        startActivity(launch);
-                    }
-                } else {
-                    conn.onReject();
-                }
-            }
+            if (conn != null) conn.onAnswer();
         } catch (Throwable ignored) { }
-        if (!answer) finishNoAnim();
-        else subtitleView.postDelayed(this::finishNoAnim, 12000); // safety net
+
+        subtitleView.postDelayed(() -> { if (answering) subtitleView.setText("In call — unlock to open the app"); }, 4000);
+
+        if (isLocked()) {
+            // Stay up as the over-keyguard in-call shell (this activity may
+            // show over the lock screen; the app's UI may not). Unlocking
+            // hands off into the app.
+            if (Build.VERSION.SDK_INT >= 33) registerReceiver(unlockReceiver, new IntentFilter(Intent.ACTION_USER_PRESENT), Context.RECEIVER_NOT_EXPORTED);
+            else registerReceiver(unlockReceiver, new IntentFilter(Intent.ACTION_USER_PRESENT));
+        } else {
+            launchApp();
+            finishNoAnim();
+        }
     }
 
     private void finishNoAnim() {
@@ -176,6 +212,7 @@ public class IncomingCallActivity extends Activity {
     @Override
     protected void onDestroy() {
         try { unregisterReceiver(closeReceiver); } catch (Throwable ignored) { }
+        try { unregisterReceiver(unlockReceiver); } catch (Throwable ignored) { }
         super.onDestroy();
     }
 
