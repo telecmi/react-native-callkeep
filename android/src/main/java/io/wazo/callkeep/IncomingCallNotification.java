@@ -25,7 +25,7 @@ import android.util.Log;
 public class IncomingCallNotification {
 
     private static final String TAG = "RNCallKeep";
-    private static final String CHANNEL_ID = "callkeep_incoming_v1";
+    private static final String CHANNEL_ID = "callkeep_incoming_v2";
 
     public static final String ACTION_NOTIFICATION_ANSWER = "io.wazo.callkeep.NOTIFICATION_ANSWER";
     public static final String ACTION_NOTIFICATION_DECLINE = "io.wazo.callkeep.NOTIFICATION_DECLINE";
@@ -70,6 +70,8 @@ public class IncomingCallNotification {
         channel.setSound(ringtone, attrs);
         channel.enableVibration(true);
         channel.setVibrationPattern(new long[]{0, 1000, 800, 1000, 800});
+        // The ring must be fully visible ON the lock screen.
+        channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
         nm.createNotificationChannel(channel);
     }
 
@@ -118,6 +120,7 @@ public class IncomingCallNotification {
                     .setContentTitle(display)
                     .setContentText("Incoming call")
                     .setCategory(Notification.CATEGORY_CALL)
+                    .setVisibility(Notification.VISIBILITY_PUBLIC)
                     .setOngoing(true)
                     .setAutoCancel(false);
 
