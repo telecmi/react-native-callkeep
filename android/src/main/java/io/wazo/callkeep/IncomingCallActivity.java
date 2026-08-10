@@ -190,18 +190,38 @@ public class IncomingCallActivity extends Activity {
             if (conn != null) conn.onAnswer();
         } catch (Throwable ignored) { }
 
-        subtitleView.postDelayed(() -> { if (answering) subtitleView.setText("In call — unlock to open the app"); }, 4000);
-
         if (isLocked()) {
-            // Stay up as the over-keyguard in-call shell (this activity may
-            // show over the lock screen; the app's UI may not). Unlocking
-            // hands off into the app.
+            // Over-keyguard in-call shell: this native activity can show over
+            // the lock screen (the RN app UI cannot). Start a live timer so
+            // the call is visibly connected; unlocking hands off to the full
+            // app (video + controls).
+            startCallTimer();
             if (Build.VERSION.SDK_INT >= 33) registerReceiver(unlockReceiver, new IntentFilter(Intent.ACTION_USER_PRESENT), Context.RECEIVER_NOT_EXPORTED);
             else registerReceiver(unlockReceiver, new IntentFilter(Intent.ACTION_USER_PRESENT));
         } else {
             launchApp();
             finishNoAnim();
         }
+    }
+
+    private long callStartMs = 0L;
+    private final android.os.Handler timerHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable tick = new Runnable() {
+        @Override public void run() {
+            if (!answering) return;
+            long secs = (System.currentTimeMillis() - callStartMs) / 1000L;
+            subtitleView.setText(String.format(java.util.Locale.US, "%02d:%02d  ·  unlock for video", secs / 60, secs % 60));
+            timerHandler.postDelayed(this, 1000);
+        }
+    };
+
+    private void startCallTimer() {
+        // Brief 'Connecting…' then the running timer.
+        timerHandler.postDelayed(() -> {
+            if (!answering) return;
+            callStartMs = System.currentTimeMillis();
+            timerHandler.post(tick);
+        }, 2000);
     }
 
     private void finishNoAnim() {
@@ -211,6 +231,7 @@ public class IncomingCallActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        try { timerHandler.removeCallbacksAndMessages(null); } catch (Throwable ignored) { }
         try { unregisterReceiver(closeReceiver); } catch (Throwable ignored) { }
         try { unregisterReceiver(unlockReceiver); } catch (Throwable ignored) { }
         super.onDestroy();
