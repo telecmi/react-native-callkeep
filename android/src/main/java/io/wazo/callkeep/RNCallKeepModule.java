@@ -1146,7 +1146,33 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule implements Life
 
         telephonyManager = (TelephonyManager) context.getSystemService(Context.TELEPHONY_SERVICE);
 
-        telecomManager.registerPhoneAccount(account);
+        try {
+
+            telecomManager.registerPhoneAccount(account);
+
+        } catch (IllegalArgumentException e) {
+
+            // The account already exists with a different kind (managed <->
+
+            // self-managed) — Telecom persists it across installs and refuses
+
+            // the change. Re-create it instead of crashing the app.
+
+            Log.w(TAG, "[RNCallKeepModule] phone account kind changed — re-registering", e);
+
+            try {
+
+                telecomManager.unregisterPhoneAccount(handle);
+
+                telecomManager.registerPhoneAccount(account);
+
+            } catch (Throwable t) {
+
+                Log.e(TAG, "[RNCallKeepModule] phone account re-registration failed", t);
+
+            }
+
+        }
     }
 
     public void sendEventToJS(String eventName, @Nullable WritableMap params) {
