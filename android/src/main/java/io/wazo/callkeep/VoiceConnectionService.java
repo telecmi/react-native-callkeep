@@ -478,17 +478,27 @@ public class VoiceConnectionService extends ConnectionService {
         connection.setConnectionCapabilities(Connection.CAPABILITY_MUTE | Connection.CAPABILITY_SUPPORT_HOLD);
 
         if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Context context = getApplicationContext();
-            TelecomManager telecomManager = (TelecomManager) context.getSystemService(context.TELECOM_SERVICE);
-            PhoneAccount phoneAccount = telecomManager.getPhoneAccount(request.getAccountHandle());
-
-            //If the phone account is self managed, then this connection must also be self managed.
-            if((phoneAccount.getCapabilities() & PhoneAccount.CAPABILITY_SELF_MANAGED) == PhoneAccount.CAPABILITY_SELF_MANAGED) {
-                Log.d(TAG, "[VoiceConnectionService] PhoneAccount is SELF_MANAGED, so connection will be too");
-                connection.setConnectionProperties(Connection.PROPERTY_SELF_MANAGED);
+            // Match the connection kind to the account. getPhoneAccount()
+            // demands the READ_PHONE_NUMBERS runtime permission on newer
+            // Android — a lookup failure must NEVER crash an incoming call,
+            // so fall back to our own setup settings.
+            boolean selfManaged = false;
+            try {
+                Context context = getApplicationContext();
+                TelecomManager telecomManager = (TelecomManager) context.getSystemService(context.TELECOM_SERVICE);
+                PhoneAccount phoneAccount = telecomManager.getPhoneAccount(request.getAccountHandle());
+                selfManaged = phoneAccount != null
+                    && (phoneAccount.getCapabilities() & PhoneAccount.CAPABILITY_SELF_MANAGED) == PhoneAccount.CAPABILITY_SELF_MANAGED;
+            } catch (Throwable t) {
+                Log.w(TAG, "[VoiceConnectionService] getPhoneAccount failed — using setup settings", t);
+                try {
+                    ReadableMap settings = getSettings(null);
+                    selfManaged = settings != null && settings.hasKey("selfManaged") && settings.getBoolean("selfManaged");
+                } catch (Throwable ignored) { }
             }
-            else {
-                Log.d(TAG, "[VoiceConnectionService] PhoneAccount is not SELF_MANAGED, so connection won't be either");
+            if (selfManaged) {
+                Log.d(TAG, "[VoiceConnectionService] connection is SELF_MANAGED");
+                connection.setConnectionProperties(Connection.PROPERTY_SELF_MANAGED);
             }
         }
 
