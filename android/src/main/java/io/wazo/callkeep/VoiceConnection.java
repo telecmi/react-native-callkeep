@@ -103,6 +103,7 @@ public class VoiceConnection extends Connection {
 
     @Override
     public void onAnswer(int videoState) {
+        IncomingCallNotification.cancel(context, handle.get(EXTRA_CALL_UUID));
         super.onAnswer(videoState);
         Log.d(TAG, "[VoiceConnection] onAnswer(int) executed");
 
@@ -130,6 +131,7 @@ public class VoiceConnection extends Connection {
 
     @Override
     public void onDisconnect() {
+        IncomingCallNotification.cancel(context, handle.get(EXTRA_CALL_UUID));
         super.onDisconnect();
         setDisconnected(new DisconnectCause(DisconnectCause.LOCAL));
         sendCallRequestToActivity(ACTION_END_CALL, handle);
@@ -322,6 +324,7 @@ public class VoiceConnection extends Connection {
 
         setDisconnected(new DisconnectCause(DisconnectCause.REJECTED));
         sendCallRequestToActivity(ACTION_END_CALL, handle);
+        IncomingCallNotification.cancel(context, handle.get(EXTRA_CALL_UUID));
         Log.d(TAG, "[VoiceConnection] onReject executed");
         try {
             ((VoiceConnectionService) context).deinitConnection(handle.get(EXTRA_CALL_UUID));
@@ -334,6 +337,13 @@ public class VoiceConnection extends Connection {
     @Override
     public void onShowIncomingCallUi() {
         Log.d(TAG, "[VoiceConnection] onShowIncomingCallUi");
+        // Self-managed mode: Android shows NO system call UI — this native
+        // notification (CallStyle on 12+) is the ring, and it works even when
+        // the app process was just spawned for the push (no JS yet).
+        IncomingCallNotification.show(context,
+                handle.get(EXTRA_CALL_UUID),
+                handle.get(EXTRA_CALLER_NAME),
+                handle.get(EXTRA_CALL_NUMBER));
         sendCallRequestToActivity(ACTION_SHOW_INCOMING_CALL_UI, handle);
     }
 

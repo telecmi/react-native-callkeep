@@ -224,6 +224,7 @@ public class VoiceConnectionService extends ConnectionService {
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                 if (ringingConnection.getState() == Connection.STATE_RINGING) {
                     Log.w(TAG, "[VoiceConnectionService] ring timeout (" + ringTimeout + " ms) — ending unanswered call " + ringingUuid);
+                    IncomingCallNotification.cancel(this, ringingUuid);
                     ringingConnection.setDisconnected(new DisconnectCause(DisconnectCause.MISSED));
                     ringingConnection.destroy();
                 }

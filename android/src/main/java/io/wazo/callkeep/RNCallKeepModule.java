@@ -714,6 +714,7 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule implements Life
     @ReactMethod
     public void reportEndCallWithUUID(String uuid, int reason) {
         Log.d(TAG, "[RNCallKeepModule] reportEndCallWithUUID, uuid: " + uuid + ", reason: " + reason);
+        IncomingCallNotification.cancel(getReactApplicationContext(), uuid);
         if (!isConnectionServiceAvailable() || !hasPhoneAccount()) {
             return;
         }

@@ -30,5 +30,13 @@
                 <action android:name="android.telecom.ConnectionService" />
             </intent-filter>
         </service>
+        <receiver
+            android:name="io.wazo.callkeep.IncomingCallActionReceiver"
+            android:exported="false">
+        <intent-filter>
+            <action android:name="io.wazo.callkeep.NOTIFICATION_ANSWER" />
+            <action android:name="io.wazo.callkeep.NOTIFICATION_DECLINE" />
+        </intent-filter>
+    </receiver>
     </application>
 </manifest>
