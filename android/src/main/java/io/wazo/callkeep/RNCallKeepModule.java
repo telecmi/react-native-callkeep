@@ -712,6 +712,26 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule implements Life
     }
 
     @ReactMethod
+    private android.app.Activity getCurrentReactActivity() {
+        try { return getCurrentActivity(); } catch (Throwable t) { return null; }
+    }
+
+    @ReactMethod
+    public void setActivityShowWhenLocked(boolean show) {
+        android.app.Activity activity = getCurrentReactActivity();
+        if (activity == null) return;
+        activity.runOnUiThread(() -> {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                    activity.setShowWhenLocked(show);
+                    activity.setTurnScreenOn(show);
+                }
+            } catch (Throwable t) {
+                Log.w(TAG, "[RNCallKeepModule] setActivityShowWhenLocked failed", t);
+            }
+        });
+    }
+
     public void reportEndCallWithUUID(String uuid, int reason) {
         Log.d(TAG, "[RNCallKeepModule] reportEndCallWithUUID, uuid: " + uuid + ", reason: " + reason);
         IncomingCallNotification.cancel(getReactApplicationContext(), uuid);
