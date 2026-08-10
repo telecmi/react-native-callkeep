@@ -444,6 +444,26 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule implements Life
         this.displayIncomingCall(uuid, number, callerName, hasVideo, null);
     }
 
+    /** ColorOS and others cap concurrent calls per self-managed account; a
+     *  crash/kill that leaves a RINGING call in Telecom (no matching local
+     *  connection) then makes the NEXT incoming call fail with
+     *  onCreateIncomingConnectionFailed. If we hold no live local connections,
+     *  any Telecom-side call is a zombie — cycling the account discards them. */
+    private void sweepZombieCalls() {
+        if (!VoiceConnectionService.currentConnections.isEmpty()) return; // real call live
+        try {
+            PhoneAccountHandle h = handle;
+            if (h != null) {
+                telecomManager.unregisterPhoneAccount(h);
+                Log.d(TAG, "[RNCallKeepModule] sweepZombieCalls: account cycled");
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "[RNCallKeepModule] sweepZombieCalls failed", t);
+        }
+        // re-register so this incoming call has an account to land on
+        try { registerPhoneAccount(this.getAppContext()); } catch (Throwable ignored) { }
+    }
+
     public void displayIncomingCall(String uuid, String number, String callerName, boolean hasVideo, @Nullable Bundle payload) {
         if (!isConnectionServiceAvailable() || !hasPhoneAccount()) {
             Log.w(TAG, "[RNCallKeepModule] displayIncomingCall ignored due to no ConnectionService or no phone account");
@@ -462,6 +482,7 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule implements Life
         if (payload != null) {
             extras.putBundle(EXTRA_PAYLOAD, payload);
         }
+        sweepZombieCalls(); // clear any orphaned RINGING calls first
         this.listenToNativeCallsState();
         telecomManager.addNewIncomingCall(handle, extras);
     }
