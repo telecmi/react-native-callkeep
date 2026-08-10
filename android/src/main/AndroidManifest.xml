@@ -30,7 +30,13 @@
                 <action android:name="android.telecom.ConnectionService" />
             </intent-filter>
         </service>
-        <receiver
+        <activity
+            android:name="io.wazo.callkeep.IncomingCallWakeActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:exported="false" />
+    <receiver
             android:name="io.wazo.callkeep.IncomingCallActionReceiver"
             android:exported="false">
         <intent-filter>

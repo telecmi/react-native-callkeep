@@ -85,12 +85,20 @@ public class IncomingCallNotification {
             int piFlags = PendingIntent.FLAG_UPDATE_CURRENT
                     | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0);
 
-            // Full-screen intent: launch the app (its JS shows the ringing UI).
+            // Full-screen intent: an invisible trampoline that only WAKES the
+            // screen — the lock screen then shows THIS notification with its
+            // Answer/Decline buttons (one ring surface everywhere, the
+            // WhatsApp behavior). Tapping the notification body opens the app.
+            Intent wake = new Intent(context, IncomingCallWakeActivity.class);
+            wake.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            PendingIntent fullScreen = PendingIntent.getActivity(
+                    context, notificationId(uuid), wake, piFlags);
+
             Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
-            PendingIntent fullScreen = null;
+            PendingIntent openApp = null;
             if (launch != null) {
                 launch.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                fullScreen = PendingIntent.getActivity(context, notificationId(uuid), launch, piFlags);
+                openApp = PendingIntent.getActivity(context, notificationId(uuid) + 3, launch, piFlags);
             }
 
             Intent answer = new Intent(ACTION_NOTIFICATION_ANSWER)
@@ -113,9 +121,9 @@ public class IncomingCallNotification {
                     .setOngoing(true)
                     .setAutoCancel(false);
 
-            if (fullScreen != null) {
-                builder.setFullScreenIntent(fullScreen, true);
-                builder.setContentIntent(fullScreen);
+            builder.setFullScreenIntent(fullScreen, true);
+            if (openApp != null) {
+                builder.setContentIntent(openApp);
             }
 
             if (Build.VERSION.SDK_INT >= 31) {
