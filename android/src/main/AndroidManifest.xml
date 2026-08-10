@@ -35,6 +35,8 @@
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:excludeFromRecents="true"
             android:noHistory="true"
+            android:taskAffinity=""
+            android:launchMode="singleInstance"
             android:exported="false" />
     <receiver
             android:name="io.wazo.callkeep.IncomingCallActionReceiver"
