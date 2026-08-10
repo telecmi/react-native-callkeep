@@ -712,7 +712,6 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule implements Life
     }
 
     @ReactMethod
-    @ReactMethod
     public void setActivityShowWhenLocked(boolean show) {
         android.app.Activity activity = getCurrentReactActivity();
         if (activity == null) return;
@@ -728,6 +727,7 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule implements Life
         });
     }
 
+    @ReactMethod
     public void reportEndCallWithUUID(String uuid, int reason) {
         Log.d(TAG, "[RNCallKeepModule] reportEndCallWithUUID, uuid: " + uuid + ", reason: " + reason);
         IncomingCallNotification.cancel(getReactApplicationContext(), uuid);
