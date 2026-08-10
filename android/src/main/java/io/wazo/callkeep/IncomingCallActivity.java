@@ -33,10 +33,21 @@ public class IncomingCallActivity extends Activity {
     public static final String EXTRA_NAME = "displayName";
 
     private String uuid;
+    private boolean answering = false;
+    private TextView subtitleView;
+    private LinearLayout buttonsView;
     private final BroadcastReceiver closeReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) {
             String target = i.getStringExtra(Constants.EXTRA_CALL_UUID);
-            if (target == null || target.equals(uuid)) finishNoAnim();
+            if (target != null && !target.equals(uuid)) return;
+            if (answering) {
+                // Answer in progress: hold the 'Connecting…' screen — the app
+                // raises itself over the keyguard when media connects and
+                // covers us; this is just the safety net.
+                subtitleView.postDelayed(IncomingCallActivity.this::finishNoAnim, 6000);
+            } else {
+                finishNoAnim();
+            }
         }
     };
 
@@ -74,6 +85,7 @@ public class IncomingCallActivity extends Activity {
         root.addView(title, tlp);
 
         TextView subtitle = new TextView(this);
+        subtitleView = subtitle;
         subtitle.setText("Incoming video call");
         subtitle.setTextColor(Color.parseColor("#9FC1FF"));
         subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
@@ -89,6 +101,7 @@ public class IncomingCallActivity extends Activity {
         root.addView(spacer, sp);
 
         LinearLayout buttons = new LinearLayout(this);
+        buttonsView = buttons;
         buttons.setOrientation(LinearLayout.HORIZONTAL);
         buttons.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
@@ -127,6 +140,14 @@ public class IncomingCallActivity extends Activity {
     }
 
     private void act(boolean answer) {
+        if (answer) {
+            // Stay up as the 'Connecting…' screen — closing instantly leaves
+            // the user staring at a dead lock screen for the 2-4s the session
+            // and media need, which reads as 'nothing happened'.
+            answering = true;
+            subtitleView.setText("Connecting…");
+            buttonsView.setVisibility(View.GONE);
+        }
         try {
             IncomingCallNotification.cancel(this, uuid);
             Connection conn = uuid == null ? null : VoiceConnectionService.getConnection(uuid);
@@ -143,7 +164,8 @@ public class IncomingCallActivity extends Activity {
                 }
             }
         } catch (Throwable ignored) { }
-        finishNoAnim();
+        if (!answer) finishNoAnim();
+        else subtitleView.postDelayed(this::finishNoAnim, 12000); // safety net
     }
 
     private void finishNoAnim() {
