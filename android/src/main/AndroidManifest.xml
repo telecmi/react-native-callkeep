@@ -34,7 +34,6 @@
         <activity
             android:name="io.wazo.callkeep.IncomingCallActivity"
             android:excludeFromRecents="true"
-            android:noHistory="true"
             android:taskAffinity=""
             android:launchMode="singleInstance"
             android:showWhenLocked="true"
