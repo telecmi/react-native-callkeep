@@ -11,6 +11,7 @@ import android.media.AudioAttributes;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.PowerManager;
 import android.util.Log;
 
 /**
@@ -75,9 +76,29 @@ public class IncomingCallNotification {
         nm.createNotificationChannel(channel);
     }
 
+    /** Wake the screen directly — no full-screen-intent permission involved.
+     *  FSI is deny-by-default on several OEMs (and silently reset on uid
+     *  changes); a call ring cannot depend on it. The deprecated flags remain
+     *  fully functional on every OEM. */
+    @SuppressWarnings("deprecation")
+    private static void wakeScreen(Context context) {
+        try {
+            PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+            PowerManager.WakeLock wl = pm.newWakeLock(
+                    PowerManager.FULL_WAKE_LOCK
+                            | PowerManager.ACQUIRE_CAUSES_WAKEUP
+                            | PowerManager.ON_AFTER_RELEASE,
+                    "callkeep:incoming_ring_wake");
+            wl.acquire(8000);
+        } catch (Throwable t) {
+            Log.w(TAG, "[IncomingCallNotification] wakeScreen failed", t);
+        }
+    }
+
     public static void show(Context context, String uuid, String callerName, String number) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || uuid == null) return;
         try {
+            wakeScreen(context); // screen ON regardless of FSI permission
             cancelAll(context); // one incoming ring at a time — no stacking
             ensureChannel(context);
 
