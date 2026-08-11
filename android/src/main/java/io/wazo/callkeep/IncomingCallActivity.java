@@ -34,12 +34,18 @@ public class IncomingCallActivity extends Activity {
     public static final String EXTRA_NAME = "displayName";
 
     private String uuid;
+    private String displayName;
     private boolean answering = false;
     private boolean ignoreNextClose = false;
+    private InCallReactSurface reactShell;
     // The locked in-call shell (post-answer) is showing: backToForeground
     // must not bury it under an activity the keyguard would hide.
     private static volatile boolean shellAnswering = false;
     public static boolean isShellAnswering() { return shellAnswering; }
+
+    private String callerDisplayName() {
+        return (displayName == null || displayName.isEmpty()) ? "In call" : displayName;
+    }
     private TextView subtitleView;
     private LinearLayout buttonsView;
     private final BroadcastReceiver closeReceiver = new BroadcastReceiver() {
@@ -73,6 +79,7 @@ public class IncomingCallActivity extends Activity {
         uuid = getIntent().getStringExtra(Constants.EXTRA_CALL_UUID);
         String name = getIntent().getStringExtra(EXTRA_NAME);
         if (name == null || name.isEmpty()) name = "Incoming call";
+        displayName = name;
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true);
@@ -212,12 +219,15 @@ public class IncomingCallActivity extends Activity {
         } catch (Throwable ignored) { }
 
         if (isLocked()) {
-            // Over-keyguard in-call shell: this native activity can show over
-            // the lock screen (the RN app UI cannot). Start a live timer so
-            // the call is visibly connected; unlocking hands off to the full
-            // app (video + controls).
+            // Over-keyguard in-call surface: this native activity can show
+            // over the lock screen (the RN app UI cannot). Preferred: mount
+            // the SDK's React-rendered in-call screen (full video + call
+            // controls) on a second React surface. Fallback when the React
+            // runtime isn't reachable: the native timer shell. Unlocking
+            // still hands off to the full app.
             shellAnswering = true;
-            startCallTimer();
+            reactShell = InCallReactSurface.attach(this, uuid, callerDisplayName());
+            startCallTimer(); // doubles as the connection-liveness watchdog
             if (Build.VERSION.SDK_INT >= 33) registerReceiver(unlockReceiver, new IntentFilter(Intent.ACTION_USER_PRESENT), Context.RECEIVER_NOT_EXPORTED);
             else registerReceiver(unlockReceiver, new IntentFilter(Intent.ACTION_USER_PRESENT));
         } else {
@@ -232,8 +242,10 @@ public class IncomingCallActivity extends Activity {
         @Override public void run() {
             if (!answering) return;
             if (!isConnectionLive()) { finishNoAnim(); return; } // call ended, broadcast or not
-            long secs = (System.currentTimeMillis() - callStartMs) / 1000L;
-            subtitleView.setText(String.format(java.util.Locale.US, "%02d:%02d  ·  unlock for video", secs / 60, secs % 60));
+            if (reactShell == null) { // native fallback shell shows the timer itself
+                long secs = (System.currentTimeMillis() - callStartMs) / 1000L;
+                subtitleView.setText(String.format(java.util.Locale.US, "%02d:%02d  ·  unlock for video", secs / 60, secs % 60));
+            }
             timerHandler.postDelayed(this, 1000);
         }
     };
@@ -253,8 +265,15 @@ public class IncomingCallActivity extends Activity {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        if (reactShell != null) reactShell.onResume(this);
+    }
+
+    @Override
     protected void onDestroy() {
         shellAnswering = false;
+        if (reactShell != null) { reactShell.detach(); reactShell = null; }
         try { timerHandler.removeCallbacksAndMessages(null); } catch (Throwable ignored) { }
         try { unregisterReceiver(closeReceiver); } catch (Throwable ignored) { }
         try { unregisterReceiver(unlockReceiver); } catch (Throwable ignored) { }
