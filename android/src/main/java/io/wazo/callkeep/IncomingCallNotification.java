@@ -37,6 +37,18 @@ public class IncomingCallNotification {
         return uuid == null ? 0 : uuid.hashCode();
     }
 
+    /** "mani kandan" -> "Mani Kandan" — server identities arrive lowercase. */
+    static String titleCase(String s) {
+        if (s == null || s.isEmpty()) return s;
+        StringBuilder b = new StringBuilder(s.length());
+        boolean up = true;
+        for (char c : s.toCharArray()) {
+            b.append(up && Character.isLetter(c) ? Character.toUpperCase(c) : c);
+            up = (c == ' ' || c == '-' || c == '.');
+        }
+        return b.toString();
+    }
+
     /** Remove EVERY incoming-call notification this library ever posted —
      *  they are ongoing (unswipeable), and a process death mid-ring orphans
      *  them until someone cleans up. Called before showing a new ring and at
@@ -111,6 +123,7 @@ public class IncomingCallNotification {
 
             String display = (callerName != null && !callerName.isEmpty()) ? callerName
                     : (number != null ? number : "Incoming call");
+            display = titleCase(display);
 
             int piFlags = PendingIntent.FLAG_UPDATE_CURRENT
                     | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0);

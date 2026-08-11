@@ -79,6 +79,7 @@ public class IncomingCallActivity extends Activity {
         uuid = getIntent().getStringExtra(Constants.EXTRA_CALL_UUID);
         String name = getIntent().getStringExtra(EXTRA_NAME);
         if (name == null || name.isEmpty()) name = "Incoming call";
+        name = IncomingCallNotification.titleCase(name);
         displayName = name;
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
