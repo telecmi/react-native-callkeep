@@ -40,6 +40,7 @@
             android:launchMode="singleInstance"
             android:showWhenLocked="true"
             android:turnScreenOn="true"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard|uiMode|density|fontScale|locale"
             android:exported="false" />
     <receiver
             android:name="io.wazo.callkeep.IncomingCallActionReceiver"

@@ -142,6 +142,16 @@ public class IncomingCallActivity extends Activity {
         IntentFilter f = new IntentFilter(ACTION_CLOSE);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(closeReceiver, f, Context.RECEIVER_NOT_EXPORTED);
         else registerReceiver(closeReceiver, f);
+
+        // Recreated mid-call (system relaunch): the Telecom connection kept
+        // the call alive — showing the ring UI again would offer Answer on an
+        // answered call. Resume the in-call UI instead.
+        try {
+            Connection conn = uuid == null ? null : VoiceConnectionService.getConnection(uuid);
+            if (conn != null && conn.getState() == Connection.STATE_ACTIVE) {
+                enterInCallUi();
+            }
+        } catch (Throwable ignored) { }
     }
 
     private LinearLayout.LayoutParams pill() {
@@ -200,8 +210,20 @@ public class IncomingCallActivity extends Activity {
         }
 
         // ---- Answer ----
-        answering = true;
         ignoreNextClose = true; // our own notification-cancel broadcast
+        try {
+            IncomingCallNotification.cancel(this, uuid);
+            Connection conn = uuid == null ? null : VoiceConnectionService.getConnection(uuid);
+            if (conn != null) conn.onAnswer();
+        } catch (Throwable ignored) { }
+        enterInCallUi();
+    }
+
+    /** Switch this activity from ring UI to in-call UI. Used at answer AND
+     *  when the activity is recreated mid-call (the system can relaunch it;
+     *  the call survives in the ConnectionService — the UI must follow). */
+    private void enterInCallUi() {
+        answering = true;
         subtitleView.setText("Connecting…");
         buttonsView.removeAllViews();
         buttonsView.addView(makeButton("Hang up", "#EF4444", v -> {
@@ -211,12 +233,6 @@ public class IncomingCallActivity extends Activity {
             } catch (Throwable ignored) { }
             finishNoAnim();
         }), pill());
-
-        try {
-            IncomingCallNotification.cancel(this, uuid);
-            Connection conn = uuid == null ? null : VoiceConnectionService.getConnection(uuid);
-            if (conn != null) conn.onAnswer();
-        } catch (Throwable ignored) { }
 
         if (isLocked()) {
             // Over-keyguard in-call surface: this native activity can show
@@ -228,8 +244,10 @@ public class IncomingCallActivity extends Activity {
             shellAnswering = true;
             reactShell = InCallReactSurface.attach(this, uuid, callerDisplayName());
             startCallTimer(); // doubles as the connection-liveness watchdog
-            if (Build.VERSION.SDK_INT >= 33) registerReceiver(unlockReceiver, new IntentFilter(Intent.ACTION_USER_PRESENT), Context.RECEIVER_NOT_EXPORTED);
-            else registerReceiver(unlockReceiver, new IntentFilter(Intent.ACTION_USER_PRESENT));
+            try {
+                if (Build.VERSION.SDK_INT >= 33) registerReceiver(unlockReceiver, new IntentFilter(Intent.ACTION_USER_PRESENT), Context.RECEIVER_NOT_EXPORTED);
+                else registerReceiver(unlockReceiver, new IntentFilter(Intent.ACTION_USER_PRESENT));
+            } catch (Throwable ignored) { }
         } else {
             launchApp();
             finishNoAnim();
