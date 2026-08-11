@@ -20,6 +20,7 @@ import com.facebook.react.bridge.LifecycleEventListener;
 import android.Manifest;
 import android.app.Activity;
 import android.content.BroadcastReceiver;
+import android.app.KeyguardManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -442,6 +443,31 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule implements Life
     @ReactMethod
     public void displayIncomingCall(String uuid, String number, String callerName, boolean hasVideo) {
         this.displayIncomingCall(uuid, number, callerName, hasVideo, null);
+    }
+
+    /** Process-start zombie purge, callable without a React context (the
+     *  SDK's ContentProvider runs it before ANYTHING else in the process).
+     *  A crash/kill mid-ring leaves a RINGING call in Telecom that re-asserts
+     *  its ring the moment the ConnectionService rebinds — BEFORE JS init can
+     *  sweep — and the stale full-screen UI then hijacks the next answer.
+     *  At process start no local connection can exist, so any Telecom call on
+     *  our account is a zombie; unregistering the account discards them and
+     *  the SDK re-registers during its normal setup. */
+    public static void purgeZombieTelecomAccount(Context context) {
+        if (context == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return;
+        try {
+            if (!VoiceConnectionService.currentConnections.isEmpty()) return; // live call in this process
+            ComponentName cName = new ComponentName(context, VoiceConnectionService.class);
+            String appName = context.getApplicationInfo().loadLabel(context.getPackageManager()).toString();
+            PhoneAccountHandle h = new PhoneAccountHandle(cName, appName);
+            TelecomManager tm = (TelecomManager) context.getSystemService(Context.TELECOM_SERVICE);
+            if (tm != null) {
+                tm.unregisterPhoneAccount(h);
+                Log.d(TAG, "[RNCallKeepModule] purgeZombieTelecomAccount: account cycled at process start");
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "[RNCallKeepModule] purgeZombieTelecomAccount failed", t);
+        }
     }
 
     /** ColorOS and others cap concurrent calls per self-managed account; a
@@ -1114,6 +1140,20 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule implements Life
         if (context == null) {
             Log.w(TAG, "[RNCallKeepModule][backToForeground] no react context found.");
             return;
+        }
+        // Locked device with the native in-call shell on top: launching the
+        // app would bury the shell behind an activity that CANNOT show over
+        // the keyguard — the user would see the lock screen instead of their
+        // call. The shell owns the UI until unlock; ACTION_USER_PRESENT then
+        // hands off to the app.
+        if (IncomingCallActivity.isShellAnswering()) {
+            try {
+                KeyguardManager km = (KeyguardManager) context.getSystemService(Context.KEYGUARD_SERVICE);
+                if (km != null && km.isKeyguardLocked()) {
+                    Log.d(TAG, "[RNCallKeepModule] backToForeground skipped — locked in-call shell is up");
+                    return;
+                }
+            } catch (Throwable ignored) { }
         }
         String packageName = context.getApplicationContext().getPackageName();
         Intent focusIntent = context.getPackageManager().getLaunchIntentForPackage(packageName).cloneFilter();

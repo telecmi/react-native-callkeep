@@ -44,6 +44,13 @@ public class IncomingCallNotification {
     public static void cancelAll(Context context) {
         if (context == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return;
         try {
+            // Close ANY showing IncomingCallActivity too (no uuid = global):
+            // when a new ring replaces an old one, the old full-screen UI must
+            // not stay on top or its Answer button answers a dead call.
+            context.sendBroadcast(new Intent(IncomingCallActivity.ACTION_CLOSE)
+                    .setPackage(context.getPackageName()));
+        } catch (Throwable ignored) { }
+        try {
             NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
             for (android.service.notification.StatusBarNotification sbn : nm.getActiveNotifications()) {
                 if (NOTIF_TAG.equals(sbn.getTag())) {

@@ -36,12 +36,24 @@ public class IncomingCallActivity extends Activity {
     private String uuid;
     private boolean answering = false;
     private boolean ignoreNextClose = false;
+    // The locked in-call shell (post-answer) is showing: backToForeground
+    // must not bury it under an activity the keyguard would hide.
+    private static volatile boolean shellAnswering = false;
+    public static boolean isShellAnswering() { return shellAnswering; }
     private TextView subtitleView;
     private LinearLayout buttonsView;
     private final BroadcastReceiver closeReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) {
             String target = i.getStringExtra(Constants.EXTRA_CALL_UUID);
             if (target != null && !target.equals(uuid)) return;
+            if (answering) {
+                // In-call shell: cancel broadcasts also fire as answer-path
+                // cleanup (notification teardown from onAnswer, global ring
+                // purges) — only a genuinely dead connection may close us.
+                if (isConnectionLive()) return;
+                finishNoAnim();
+                return;
+            }
             if (ignoreNextClose) { ignoreNextClose = false; return; } // our own answer-cancel
             finishNoAnim(); // ring cancelled, or the call ended
         }
@@ -143,6 +155,15 @@ public class IncomingCallActivity extends Activity {
         return b;
     }
 
+    /** Is the Telecom connection for this call still alive? The in-call shell
+     *  lives exactly as long as the connection does. */
+    private boolean isConnectionLive() {
+        try {
+            Connection conn = uuid == null ? null : VoiceConnectionService.getConnection(uuid);
+            return conn != null && conn.getState() != Connection.STATE_DISCONNECTED;
+        } catch (Throwable t) { return false; }
+    }
+
     private boolean isLocked() {
         try {
             KeyguardManager km = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
@@ -195,6 +216,7 @@ public class IncomingCallActivity extends Activity {
             // the lock screen (the RN app UI cannot). Start a live timer so
             // the call is visibly connected; unlocking hands off to the full
             // app (video + controls).
+            shellAnswering = true;
             startCallTimer();
             if (Build.VERSION.SDK_INT >= 33) registerReceiver(unlockReceiver, new IntentFilter(Intent.ACTION_USER_PRESENT), Context.RECEIVER_NOT_EXPORTED);
             else registerReceiver(unlockReceiver, new IntentFilter(Intent.ACTION_USER_PRESENT));
@@ -209,6 +231,7 @@ public class IncomingCallActivity extends Activity {
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             if (!answering) return;
+            if (!isConnectionLive()) { finishNoAnim(); return; } // call ended, broadcast or not
             long secs = (System.currentTimeMillis() - callStartMs) / 1000L;
             subtitleView.setText(String.format(java.util.Locale.US, "%02d:%02d  ·  unlock for video", secs / 60, secs % 60));
             timerHandler.postDelayed(this, 1000);
@@ -231,6 +254,7 @@ public class IncomingCallActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        shellAnswering = false;
         try { timerHandler.removeCallbacksAndMessages(null); } catch (Throwable ignored) { }
         try { unregisterReceiver(closeReceiver); } catch (Throwable ignored) { }
         try { unregisterReceiver(unlockReceiver); } catch (Throwable ignored) { }
