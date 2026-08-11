@@ -36,6 +36,7 @@ import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.Looper;
 import android.view.WindowManager;
 import androidx.annotation.NonNull;
@@ -1141,16 +1142,33 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule implements Life
             Log.w(TAG, "[RNCallKeepModule][backToForeground] no react context found.");
             return;
         }
-        // Locked device with the native in-call shell on top: launching the
+        // Locked device with the native in-call shell on top: fronting the
         // app would bury the shell behind an activity that CANNOT show over
-        // the keyguard — the user would see the lock screen instead of their
-        // call. The shell owns the UI until unlock; ACTION_USER_PRESENT then
-        // hands off to the app.
+        // the keyguard. But the app must still BOOT — on a cold start its
+        // root component is what creates the SDK session that completes the
+        // answer. So: start the app, then immediately re-front the shell's
+        // task; the app loads invisibly behind it. ACTION_USER_PRESENT still
+        // hands the UI off on unlock.
         if (IncomingCallActivity.isShellAnswering()) {
             try {
                 KeyguardManager km = (KeyguardManager) context.getSystemService(Context.KEYGUARD_SERVICE);
                 if (km != null && km.isKeyguardLocked()) {
-                    Log.d(TAG, "[RNCallKeepModule] backToForeground skipped — locked in-call shell is up");
+                    Log.d(TAG, "[RNCallKeepModule] backToForeground: booting app behind locked shell");
+                    final Context appCtx = context.getApplicationContext();
+                    try {
+                        Intent launch = appCtx.getPackageManager().getLaunchIntentForPackage(appCtx.getPackageName());
+                        if (launch != null) {
+                            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            appCtx.startActivity(launch);
+                        }
+                    } catch (Throwable ignored) { }
+                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                        try {
+                            Intent front = new Intent(appCtx, IncomingCallActivity.class);
+                            front.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                            appCtx.startActivity(front);
+                        } catch (Throwable ignored) { }
+                    }, 300);
                     return;
                 }
             } catch (Throwable ignored) { }
