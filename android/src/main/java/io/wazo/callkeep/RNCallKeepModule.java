@@ -820,8 +820,10 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule implements Life
        }
        this.stopListenToNativeCallsState();
        Log.d(TAG, "[RNCallKeepModule] onHostDestroy executed");
-       // This line will kill the android process after ending all calls
-       android.os.Process.killProcess(android.os.Process.myPid());
+       // Upstream killed the process here ("after ending all calls") — fatal
+       // for a push-wake calling app: it tears down the FCM handler chain and
+       // fires on ANY React host teardown (including our second in-call
+       // surface). Calls are ended above; the OS reclaims the process itself.
    }
 
     @ReactMethod
@@ -1142,33 +1144,19 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule implements Life
             Log.w(TAG, "[RNCallKeepModule][backToForeground] no react context found.");
             return;
         }
-        // Locked device with the native in-call shell on top: fronting the
+        // Locked device with the native in-call shell on top: launching the
         // app would bury the shell behind an activity that CANNOT show over
-        // the keyguard. But the app must still BOOT — on a cold start its
-        // root component is what creates the SDK session that completes the
-        // answer. So: start the app, then immediately re-front the shell's
-        // task; the app loads invisibly behind it. ACTION_USER_PRESENT still
-        // hands the UI off on unlock.
+        // the keyguard — and resuming a ReactActivity while the shell holds
+        // the React host's lifecycle crashes the process on that activity's
+        // next pause ("Pausing an activity that is not the current activity").
+        // The shell owns the UI until unlock; ACTION_USER_PRESENT hands off.
+        // (Cold starts create the session headlessly via the SDK's cold-boot
+        // factory — no activity launch is ever needed while locked.)
         if (IncomingCallActivity.isShellAnswering()) {
             try {
                 KeyguardManager km = (KeyguardManager) context.getSystemService(Context.KEYGUARD_SERVICE);
                 if (km != null && km.isKeyguardLocked()) {
-                    Log.d(TAG, "[RNCallKeepModule] backToForeground: booting app behind locked shell");
-                    final Context appCtx = context.getApplicationContext();
-                    try {
-                        Intent launch = appCtx.getPackageManager().getLaunchIntentForPackage(appCtx.getPackageName());
-                        if (launch != null) {
-                            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                            appCtx.startActivity(launch);
-                        }
-                    } catch (Throwable ignored) { }
-                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                        try {
-                            Intent front = new Intent(appCtx, IncomingCallActivity.class);
-                            front.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                            appCtx.startActivity(front);
-                        } catch (Throwable ignored) { }
-                    }, 300);
+                    Log.d(TAG, "[RNCallKeepModule] backToForeground skipped — locked in-call shell is up");
                     return;
                 }
             } catch (Throwable ignored) { }
