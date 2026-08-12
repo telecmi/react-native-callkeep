@@ -2,6 +2,8 @@ package io.wazo.callkeep;
 
 import android.app.Activity;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.view.ViewGroup;
 
@@ -31,8 +33,25 @@ final class InCallReactSurface {
     private ReactSurface surface;   // bridgeless
     private ReactHost host;
     private ReactRootView rootView; // legacy bridge
+    private final Handler claimHandler = new Handler(Looper.getMainLooper());
 
     private InCallReactSurface() { }
+
+    /** Claim the React host's lifecycle for this activity — DELAYED, never
+     *  immediate: a ReactActivity that is mid-transition behind us must get
+     *  its own onHostPause in first (its pause asserts against the CURRENT
+     *  activity; claiming before it pauses crashes the process with
+     *  "Pausing an activity that is not the current activity"). After the
+     *  delay the claim resumes the host so the surface's JS timers run even
+     *  with no ReactActivity in the foreground. */
+    private void scheduleClaim(Activity activity) {
+        claimHandler.removeCallbacksAndMessages(null);
+        claimHandler.postDelayed(() -> {
+            try {
+                if (host != null) host.onHostResume(activity);
+            } catch (Throwable ignored) { }
+        }, 800);
+    }
 
     /** Attach the React in-call screen to the activity. Returns null when the
      *  React runtime isn't reachable (fallback: native timer shell). */
@@ -54,13 +73,11 @@ final class InCallReactSurface {
                     if (view != null) {
                         s.start();
                         activity.setContentView(view);
-                        // Make React consider THIS activity the current host:
-                        // resumes JS timers (frozen while a non-React activity
-                        // is frontmost) and lets the surface render live.
-                        reactHost.onHostResume(activity);
                         InCallReactSurface r = new InCallReactSurface();
                         r.surface = s;
                         r.host = reactHost;
+                        // Delayed lifecycle claim — see scheduleClaim.
+                        r.scheduleClaim(activity);
                         Log.d(TAG, "[InCallReactSurface] bridgeless surface attached");
                         return r;
                     }
@@ -85,14 +102,14 @@ final class InCallReactSurface {
         return null;
     }
 
-    /** Re-assert host resume (e.g. from Activity.onResume). */
+    /** Re-assert host resume (e.g. from Activity.onResume) — delayed, so a
+     *  ReactActivity pausing behind us settles first. */
     void onResume(Activity activity) {
-        try {
-            if (host != null) host.onHostResume(activity);
-        } catch (Throwable ignored) { }
+        if (host != null) scheduleClaim(activity);
     }
 
     void detach() {
+        try { claimHandler.removeCallbacksAndMessages(null); } catch (Throwable ignored) { }
         try {
             if (surface != null) {
                 surface.stop();

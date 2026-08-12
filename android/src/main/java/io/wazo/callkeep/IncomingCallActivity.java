@@ -37,6 +37,20 @@ public class IncomingCallActivity extends Activity {
     private String uuid;
     private String displayName;
     private boolean answering = false;
+    // Unlock restores the pre-lock task order (the app comes forward, hiding
+    // the live call) — bring the call screen back on top.
+    private final BroadcastReceiver refrontReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context c, Intent i) {
+            if (!answering) return;
+            try {
+                Intent front = new Intent(c, IncomingCallActivity.class);
+                front.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                front.putExtra(Constants.EXTRA_CALL_UUID, uuid);
+                front.putExtra(EXTRA_ANSWERED, true);
+                c.startActivity(front);
+            } catch (Throwable ignored) { }
+        }
+    };
     private boolean ignoreNextClose = false;
     private InCallReactSurface reactShell;
     // The locked in-call shell (post-answer) is showing: backToForeground
@@ -239,6 +253,14 @@ public class IncomingCallActivity extends Activity {
         shellAnswering = true;
         reactShell = InCallReactSurface.attach(this, uuid, callerDisplayName());
         startCallTimer(); // doubles as the connection-liveness watchdog
+        // Unlocking dismisses the keyguard this screen was overlaying and the
+        // system restores the pre-lock task to the front (usually the app) —
+        // re-front the call screen so the call stays the visible UI.
+        try {
+            IntentFilter unlock = new IntentFilter(Intent.ACTION_USER_PRESENT);
+            if (Build.VERSION.SDK_INT >= 33) registerReceiver(refrontReceiver, unlock, Context.RECEIVER_NOT_EXPORTED);
+            else registerReceiver(refrontReceiver, unlock);
+        } catch (Throwable ignored) { }
     }
 
     private long callStartMs = 0L;
@@ -281,6 +303,7 @@ public class IncomingCallActivity extends Activity {
         if (reactShell != null) { reactShell.detach(); reactShell = null; }
         try { timerHandler.removeCallbacksAndMessages(null); } catch (Throwable ignored) { }
         try { unregisterReceiver(closeReceiver); } catch (Throwable ignored) { }
+        try { unregisterReceiver(refrontReceiver); } catch (Throwable ignored) { }
         super.onDestroy();
     }
 
