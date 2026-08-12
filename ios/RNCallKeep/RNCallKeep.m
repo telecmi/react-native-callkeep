@@ -785,6 +785,9 @@ RCT_EXPORT_METHOD(getAudioRoutes: (RCTPromiseResolveBlock)resolve
     callUpdate.supportsUngrouping = supportsUngrouping;
     callUpdate.hasVideo = hasVideo;
     callUpdate.localizedCallerName = localizedCallerName;
+    if (hasVideo) {
+        [[RNCallKeep videoCallUUIDs] addObject:[uuidString lowercaseString]];
+    }
 
     [RNCallKeep initCallKitProvider];
     [sharedProvider reportNewIncomingCallWithUUID:uuid update:callUpdate completion:^(NSError * _Nullable error) {
@@ -1075,6 +1078,31 @@ RCT_EXPORT_METHOD(reportUpdatedCall:(NSString *)uuidString contactIdentifier:(NS
 }
 
 // Answering incoming call
+// Calls reported with hasVideo — their answer handoff (iOS launching the
+// app into the foreground) breaks on iOS 16+ if the answer action is
+// fulfilled before the device is unlocked and the app is active.
++ (NSMutableSet *)videoCallUUIDs
+{
+    static NSMutableSet *set = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{ set = [NSMutableSet set]; });
+    return set;
+}
+
++ (void)fulfillAnswerAction:(CXAnswerCallAction *)action attempt:(int)attempt
+{
+    UIApplication *app = [UIApplication sharedApplication];
+    BOOL ready = app.isProtectedDataAvailable && app.applicationState == UIApplicationStateActive;
+    if (ready || attempt >= 15) { // 15 × 300 ms ≈ 4.5 s cap
+        [action fulfill];
+        return;
+    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        [RNCallKeep fulfillAnswerAction:action attempt:attempt + 1];
+    });
+}
+
 - (void)provider:(CXProvider *)provider performAnswerCallAction:(CXAnswerCallAction *)action
 {
 #ifdef DEBUG
@@ -1082,7 +1110,14 @@ RCT_EXPORT_METHOD(reportUpdatedCall:(NSString *)uuidString contactIdentifier:(NS
 #endif
     [self configureAudioSession];
     [self sendEventWithNameWrapper:RNCallKeepPerformAnswerCallAction body:@{ @"callUUID": [action.callUUID.UUIDString lowercaseString] }];
-    [action fulfill];
+    if ([[RNCallKeep videoCallUUIDs] containsObject:[action.callUUID.UUIDString lowercaseString]]) {
+        // Video call: hold the fulfill until the device is unlocked and the
+        // app is active (or timeout) — fulfilling early makes iOS abandon
+        // the app-foreground handoff and strand the user on the system UI.
+        [RNCallKeep fulfillAnswerAction:action attempt:0];
+    } else {
+        [action fulfill];
+    }
 }
 
 // Ending incoming call
