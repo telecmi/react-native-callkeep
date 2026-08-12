@@ -1137,14 +1137,34 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule implements Life
         promise.resolve(hasPhoneAccount());
     }
 
-    /** Bring up the SDK's in-call screen for an answered call — the ONE call
-     *  UI regardless of how the call was answered (lock-screen, notification,
-     *  in-app) or whether the device is locked. singleInstance: if the screen
-     *  is already up this is a no-op re-front. */
+    /** Is the app's own UI what the user is looking at right now? (A resumed,
+     *  focused React activity on an unlocked screen.) When true, the app UI
+     *  owns the call; the SDK call screen is for every other state. */
+    public static boolean isAppUiForeground() {
+        try {
+            if (instance == null) return false;
+            Activity activity = instance.getCurrentReactActivity();
+            if (activity == null || !activity.hasWindowFocus()) return false;
+            KeyguardManager km = (KeyguardManager) activity.getSystemService(Context.KEYGUARD_SERVICE);
+            return km == null || !km.isKeyguardLocked();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** Bring up the SDK's in-call screen for an answered call — used whenever
+     *  the app's own UI is NOT what the user is looking at (locked screen,
+     *  backgrounded app, notification answer). With the app UI focused the
+     *  call stays in the app. singleInstance: if the screen is already up
+     *  this is a no-op re-front. */
     @ReactMethod
     public void showInCallScreen(String uuid, String callerName) {
         Context context = getAppContext();
         if (context == null || uuid == null) return;
+        if (isAppUiForeground()) {
+            Log.d(TAG, "[RNCallKeepModule] showInCallScreen skipped — app UI is foreground");
+            return;
+        }
         try {
             Intent intent = new Intent(context, IncomingCallActivity.class);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);

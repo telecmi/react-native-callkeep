@@ -33,15 +33,17 @@ public class IncomingCallActionReceiver extends BroadcastReceiver {
         try {
             if (IncomingCallNotification.ACTION_NOTIFICATION_ANSWER.equals(action)) {
                 connection.onAnswer();
-                // Open the SDK's in-call screen — the ONE call UI (with an
-                // active self-managed call the app is exempt from
-                // background-activity-start restrictions).
-                Intent inCall = new Intent(context, IncomingCallActivity.class);
-                inCall.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                inCall.putExtra(Constants.EXTRA_CALL_UUID, uuid);
-                inCall.putExtra(IncomingCallActivity.EXTRA_NAME, intent.getStringExtra(IncomingCallActivity.EXTRA_NAME));
-                inCall.putExtra(IncomingCallActivity.EXTRA_ANSWERED, true);
-                context.startActivity(inCall);
+                // App UI focused: the call stays in the app. Otherwise open
+                // the SDK's in-call screen (with an active self-managed call
+                // the app is exempt from background-start restrictions).
+                if (!RNCallKeepModule.isAppUiForeground()) {
+                    Intent inCall = new Intent(context, IncomingCallActivity.class);
+                    inCall.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                    inCall.putExtra(Constants.EXTRA_CALL_UUID, uuid);
+                    inCall.putExtra(IncomingCallActivity.EXTRA_NAME, intent.getStringExtra(IncomingCallActivity.EXTRA_NAME));
+                    inCall.putExtra(IncomingCallActivity.EXTRA_ANSWERED, true);
+                    context.startActivity(inCall);
+                }
             } else if (IncomingCallNotification.ACTION_NOTIFICATION_DECLINE.equals(action)) {
                 connection.onReject();
             }
