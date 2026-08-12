@@ -1092,8 +1092,15 @@ RCT_EXPORT_METHOD(reportUpdatedCall:(NSString *)uuidString contactIdentifier:(NS
 + (void)fulfillAnswerAction:(CXAnswerCallAction *)action attempt:(int)attempt
 {
     UIApplication *app = [UIApplication sharedApplication];
-    BOOL ready = app.isProtectedDataAvailable && app.applicationState == UIApplicationStateActive;
-    if (ready || attempt >= 15) { // 15 × 300 ms ≈ 4.5 s cap
+    // App VISIBLE (on screen, unlocked — 'inactive' included: banner taps
+    // briefly deactivate it): fulfill IMMEDIATELY. Holding the answer open
+    // here leaves the banner ringing and pushes the system call UI over the
+    // app. The wait is ONLY for when the app needs launching: locked device
+    // (fulfill after unlock hands into the app) or backgrounded app
+    // (fulfill once iOS activates it for the video call).
+    BOOL visible = app.isProtectedDataAvailable
+        && app.applicationState != UIApplicationStateBackground;
+    if (visible || attempt >= 15) { // 15 × 300 ms ≈ 4.5 s cap
         [action fulfill];
         return;
     }
