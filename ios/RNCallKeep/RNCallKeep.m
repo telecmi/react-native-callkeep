@@ -231,8 +231,18 @@ RCT_EXPORT_METHOD(setup:(NSDictionary *)options)
     [self.callKeepProvider setDelegate:self queue:nil];
 }
 
+// LiveKit-style audio ownership: with audioSession.autoConfigure = false in
+// the setup options, CallKeep NEVER touches AVAudioSession — the media
+// engine's audio device module owns configuration. Prevents the session
+// thrash of two owners configuring competing categories at answer time.
+static BOOL autoConfigureAudioSession = YES;
+
 RCT_EXPORT_METHOD(setSettings:(NSDictionary *)options)
 {
+    NSDictionary *audioSessionSettings = options[@"audioSession"];
+    if ([audioSessionSettings isKindOfClass:[NSDictionary class]] && audioSessionSettings[@"autoConfigure"] != nil) {
+        autoConfigureAudioSession = [audioSessionSettings[@"autoConfigure"] boolValue];
+    }
 #ifdef DEBUG
     NSLog(@"[RNCallKeep][setSettings] options = %@", options);
 #endif
@@ -1057,7 +1067,7 @@ continueUserActivity:(NSUserActivity *)userActivity
     NSLog(@"[RNCallKeep][CXProviderDelegate][provider:performStartCallAction]");
 #endif
     //do this first, audio sessions are flakey
-    [self configureAudioSession];
+    if (autoConfigureAudioSession) [self configureAudioSession];
     //tell the JS to actually make the call
     [self sendEventWithNameWrapper:RNCallKeepDidReceiveStartCallAction body:@{ @"callUUID": [action.callUUID.UUIDString lowercaseString], @"handle": action.handle.value }];
     [action fulfill];
@@ -1133,7 +1143,7 @@ RCT_EXPORT_METHOD(reportUpdatedCall:(NSString *)uuidString contactIdentifier:(NS
     NSLog(@"[RNCallKeep][CXProviderDelegate][provider:performAnswerCallAction]");
 #endif
     [[RNCallKeep answeredCallUUIDs] addObject:[action.callUUID.UUIDString lowercaseString]];
-    [self configureAudioSession];
+    if (autoConfigureAudioSession) [self configureAudioSession];
     [self sendEventWithNameWrapper:RNCallKeepPerformAnswerCallAction body:@{ @"callUUID": [action.callUUID.UUIDString lowercaseString] }];
     // Fulfill immediately (stock behavior): holding the answer open caused
     // lingering ring banners, system-UI flicker, and raced the multi-device
@@ -1199,7 +1209,7 @@ RCT_EXPORT_METHOD(reportUpdatedCall:(NSString *)uuidString contactIdentifier:(NS
     };
     [[NSNotificationCenter defaultCenter] postNotificationName:AVAudioSessionInterruptionNotification object:nil userInfo:userInfo];
 
-    [self configureAudioSession];
+    if (autoConfigureAudioSession) [self configureAudioSession];
     [self sendEventWithNameWrapper:RNCallKeepDidActivateAudioSession body:nil];
 }
 
