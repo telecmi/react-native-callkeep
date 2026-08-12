@@ -338,15 +338,35 @@ public class VoiceConnectionService extends ConnectionService {
             .setPriority(NotificationManager.IMPORTANCE_MIN)
             .setCategory(Notification.CATEGORY_SERVICE);
 
-        Activity currentActivity = RNCallKeepModule.instance.getCurrentReactActivity();
-        if (currentActivity != null) {
-            Intent notificationIntent = new Intent(this, currentActivity.getClass());
-            notificationIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
-
+        // Tapping the ongoing-call notification returns to the SDK call
+        // screen (its onCreate shows ring or in-call UI by connection state).
+        // Fallback: the app's current activity, as upstream did.
+        Intent notificationIntent = null;
+        String activeUuid = null;
+        try {
+            for (String key : currentConnections.keySet()) { activeUuid = key; break; }
+        } catch (Throwable ignored) { }
+        if (activeUuid != null) {
+            notificationIntent = new Intent(this, IncomingCallActivity.class);
+            notificationIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            notificationIntent.putExtra(Constants.EXTRA_CALL_UUID, activeUuid);
+            try {
+                Connection conn = getConnection(activeUuid);
+                if (conn != null && conn.getExtras() != null) {
+                    notificationIntent.putExtra(IncomingCallActivity.EXTRA_NAME,
+                            conn.getExtras().getString(Constants.EXTRA_CALLER_NAME));
+                }
+            } catch (Throwable ignored) { }
+        } else {
+            Activity currentActivity = RNCallKeepModule.instance.getCurrentReactActivity();
+            if (currentActivity != null) {
+                notificationIntent = new Intent(this, currentActivity.getClass());
+                notificationIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            }
+        }
+        if (notificationIntent != null) {
             final int flag =  Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE : PendingIntent.FLAG_UPDATE_CURRENT;
-
             PendingIntent pendingIntent = PendingIntent.getActivity(this, NOTIFICATION_ID, notificationIntent, flag);
-
             notificationBuilder.setContentIntent(pendingIntent);
         }
 
