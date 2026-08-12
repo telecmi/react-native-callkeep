@@ -44,6 +44,7 @@ continueUserActivity:(NSUserActivity *)userActivity
                  reason:(int)reason;
 
 + (BOOL)isCallActive:(NSString *)uuidString;
++ (BOOL)wasCallAnswered:(NSString *)uuidString;
 
 + (void)setup:(NSDictionary *)options;
 

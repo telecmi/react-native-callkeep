@@ -1110,11 +1110,29 @@ RCT_EXPORT_METHOD(reportUpdatedCall:(NSString *)uuidString contactIdentifier:(NS
     });
 }
 
+// Calls the user ANSWERED — set the moment the answer action arrives, before
+// any fulfillment wait. CXCall.hasConnected lags the answer by seconds on
+// launch paths; cancel handling must not mistake "answered, still
+// connecting" for "still ringing".
++ (NSMutableSet *)answeredCallUUIDs
+{
+    static NSMutableSet *set = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{ set = [NSMutableSet set]; });
+    return set;
+}
+
++ (BOOL)wasCallAnswered:(NSString *)uuidString
+{
+    return [[RNCallKeep answeredCallUUIDs] containsObject:[uuidString lowercaseString]];
+}
+
 - (void)provider:(CXProvider *)provider performAnswerCallAction:(CXAnswerCallAction *)action
 {
 #ifdef DEBUG
     NSLog(@"[RNCallKeep][CXProviderDelegate][provider:performAnswerCallAction]");
 #endif
+    [[RNCallKeep answeredCallUUIDs] addObject:[action.callUUID.UUIDString lowercaseString]];
     [self configureAudioSession];
     [self sendEventWithNameWrapper:RNCallKeepPerformAnswerCallAction body:@{ @"callUUID": [action.callUUID.UUIDString lowercaseString] }];
     if ([[RNCallKeep videoCallUUIDs] containsObject:[action.callUUID.UUIDString lowercaseString]]) {
