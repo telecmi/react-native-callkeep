@@ -33,13 +33,15 @@ public class IncomingCallActionReceiver extends BroadcastReceiver {
         try {
             if (IncomingCallNotification.ACTION_NOTIFICATION_ANSWER.equals(action)) {
                 connection.onAnswer();
-                // Surface the app: with an active self-managed call the app is
-                // exempt from background-activity-start restrictions.
-                Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
-                if (launch != null) {
-                    launch.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                    context.startActivity(launch);
-                }
+                // Open the SDK's in-call screen — the ONE call UI (with an
+                // active self-managed call the app is exempt from
+                // background-activity-start restrictions).
+                Intent inCall = new Intent(context, IncomingCallActivity.class);
+                inCall.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                inCall.putExtra(Constants.EXTRA_CALL_UUID, uuid);
+                inCall.putExtra(IncomingCallActivity.EXTRA_NAME, intent.getStringExtra(IncomingCallActivity.EXTRA_NAME));
+                inCall.putExtra(IncomingCallActivity.EXTRA_ANSWERED, true);
+                context.startActivity(inCall);
             } else if (IncomingCallNotification.ACTION_NOTIFICATION_DECLINE.equals(action)) {
                 connection.onReject();
             }

@@ -1137,6 +1137,26 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule implements Life
         promise.resolve(hasPhoneAccount());
     }
 
+    /** Bring up the SDK's in-call screen for an answered call — the ONE call
+     *  UI regardless of how the call was answered (lock-screen, notification,
+     *  in-app) or whether the device is locked. singleInstance: if the screen
+     *  is already up this is a no-op re-front. */
+    @ReactMethod
+    public void showInCallScreen(String uuid, String callerName) {
+        Context context = getAppContext();
+        if (context == null || uuid == null) return;
+        try {
+            Intent intent = new Intent(context, IncomingCallActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            intent.putExtra(Constants.EXTRA_CALL_UUID, uuid);
+            intent.putExtra(IncomingCallActivity.EXTRA_NAME, callerName);
+            intent.putExtra(IncomingCallActivity.EXTRA_ANSWERED, true);
+            context.startActivity(intent);
+        } catch (Throwable t) {
+            Log.w(TAG, "[RNCallKeepModule] showInCallScreen failed", t);
+        }
+    }
+
     @ReactMethod
     public void backToForeground() {
         Context context = getAppContext();
@@ -1144,22 +1164,14 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule implements Life
             Log.w(TAG, "[RNCallKeepModule][backToForeground] no react context found.");
             return;
         }
-        // Locked device with the native in-call shell on top: launching the
-        // app would bury the shell behind an activity that CANNOT show over
-        // the keyguard — and resuming a ReactActivity while the shell holds
-        // the React host's lifecycle crashes the process on that activity's
-        // next pause ("Pausing an activity that is not the current activity").
-        // The shell owns the UI until unlock; ACTION_USER_PRESENT hands off.
-        // (Cold starts create the session headlessly via the SDK's cold-boot
-        // factory — no activity launch is ever needed while locked.)
+        // The SDK's in-call screen is THE call UI: while it is up, launching
+        // the app would bury it — and resuming a ReactActivity while the
+        // screen holds the React host's lifecycle crashes the process on that
+        // activity's next pause ("Pausing an activity that is not the current
+        // activity").
         if (IncomingCallActivity.isShellAnswering()) {
-            try {
-                KeyguardManager km = (KeyguardManager) context.getSystemService(Context.KEYGUARD_SERVICE);
-                if (km != null && km.isKeyguardLocked()) {
-                    Log.d(TAG, "[RNCallKeepModule] backToForeground skipped — locked in-call shell is up");
-                    return;
-                }
-            } catch (Throwable ignored) { }
+            Log.d(TAG, "[RNCallKeepModule] backToForeground skipped — in-call screen is up");
+            return;
         }
         String packageName = context.getApplicationContext().getPackageName();
         Intent focusIntent = context.getPackageManager().getLaunchIntentForPackage(packageName).cloneFilter();

@@ -147,7 +147,8 @@ public class IncomingCallNotification {
 
             Intent answer = new Intent(ACTION_NOTIFICATION_ANSWER)
                     .setPackage(context.getPackageName())
-                    .putExtra(Constants.EXTRA_CALL_UUID, uuid);
+                    .putExtra(Constants.EXTRA_CALL_UUID, uuid)
+                    .putExtra(IncomingCallActivity.EXTRA_NAME, display);
             PendingIntent answerPi = PendingIntent.getBroadcast(
                     context, notificationId(uuid) + 1, answer, piFlags);
 

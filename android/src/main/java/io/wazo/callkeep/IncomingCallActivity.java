@@ -32,6 +32,7 @@ public class IncomingCallActivity extends Activity {
 
     public static final String ACTION_CLOSE = "io.wazo.callkeep.INCOMING_UI_CLOSE";
     public static final String EXTRA_NAME = "displayName";
+    public static final String EXTRA_ANSWERED = "alreadyAnswered";
 
     private String uuid;
     private String displayName;
@@ -62,14 +63,6 @@ public class IncomingCallActivity extends Activity {
             }
             if (ignoreNextClose) { ignoreNextClose = false; return; } // our own answer-cancel
             finishNoAnim(); // ring cancelled, or the call ended
-        }
-    };
-    // Unlock during the call: hand off into the full app UI.
-    private final BroadcastReceiver unlockReceiver = new BroadcastReceiver() {
-        @Override public void onReceive(Context c, Intent i) {
-            if (!answering) return;
-            launchApp();
-            finishNoAnim();
         }
     };
 
@@ -144,12 +137,14 @@ public class IncomingCallActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(closeReceiver, f, Context.RECEIVER_NOT_EXPORTED);
         else registerReceiver(closeReceiver, f);
 
-        // Recreated mid-call (system relaunch): the Telecom connection kept
-        // the call alive — showing the ring UI again would offer Answer on an
-        // answered call. Resume the in-call UI instead.
+        // Launched for an ALREADY-ANSWERED call (notification answer, in-app
+        // answer, media connect) or recreated mid-call by the system: showing
+        // the ring UI would offer Answer on a live call — go straight to the
+        // in-call UI.
         try {
             Connection conn = uuid == null ? null : VoiceConnectionService.getConnection(uuid);
-            if (conn != null && conn.getState() == Connection.STATE_ACTIVE) {
+            boolean answeredExtra = getIntent().getBooleanExtra(EXTRA_ANSWERED, false);
+            if (answeredExtra || (conn != null && conn.getState() == Connection.STATE_ACTIVE)) {
                 enterInCallUi();
             }
         } catch (Throwable ignored) { }
@@ -235,24 +230,15 @@ public class IncomingCallActivity extends Activity {
             finishNoAnim();
         }), pill());
 
-        if (isLocked()) {
-            // Over-keyguard in-call surface: this native activity can show
-            // over the lock screen (the RN app UI cannot). Preferred: mount
-            // the SDK's React-rendered in-call screen (full video + call
-            // controls) on a second React surface. Fallback when the React
-            // runtime isn't reachable: the native timer shell. Unlocking
-            // still hands off to the full app.
-            shellAnswering = true;
-            reactShell = InCallReactSurface.attach(this, uuid, callerDisplayName());
-            startCallTimer(); // doubles as the connection-liveness watchdog
-            try {
-                if (Build.VERSION.SDK_INT >= 33) registerReceiver(unlockReceiver, new IntentFilter(Intent.ACTION_USER_PRESENT), Context.RECEIVER_NOT_EXPORTED);
-                else registerReceiver(unlockReceiver, new IntentFilter(Intent.ACTION_USER_PRESENT));
-            } catch (Throwable ignored) { }
-        } else {
-            launchApp();
-            finishNoAnim();
-        }
+        // THE call screen — locked or unlocked, one UI for every answered
+        // incoming call (no handoff to a second app-rendered screen).
+        // Preferred: the SDK's React-rendered in-call screen (full video +
+        // controls) on a second React surface; fallback when the React
+        // runtime isn't reachable: the native timer shell.
+        if (shellAnswering) return; // already in-call (duplicate trigger)
+        shellAnswering = true;
+        reactShell = InCallReactSurface.attach(this, uuid, callerDisplayName());
+        startCallTimer(); // doubles as the connection-liveness watchdog
     }
 
     private long callStartMs = 0L;
@@ -263,7 +249,7 @@ public class IncomingCallActivity extends Activity {
             if (!isConnectionLive()) { finishNoAnim(); return; } // call ended, broadcast or not
             if (reactShell == null) { // native fallback shell shows the timer itself
                 long secs = (System.currentTimeMillis() - callStartMs) / 1000L;
-                subtitleView.setText(String.format(java.util.Locale.US, "%02d:%02d  ·  unlock for video", secs / 60, secs % 60));
+                subtitleView.setText(String.format(java.util.Locale.US, "%02d:%02d", secs / 60, secs % 60));
             }
             timerHandler.postDelayed(this, 1000);
         }
@@ -295,7 +281,6 @@ public class IncomingCallActivity extends Activity {
         if (reactShell != null) { reactShell.detach(); reactShell = null; }
         try { timerHandler.removeCallbacksAndMessages(null); } catch (Throwable ignored) { }
         try { unregisterReceiver(closeReceiver); } catch (Throwable ignored) { }
-        try { unregisterReceiver(unlockReceiver); } catch (Throwable ignored) { }
         super.onDestroy();
     }
 
