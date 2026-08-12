@@ -1135,14 +1135,11 @@ RCT_EXPORT_METHOD(reportUpdatedCall:(NSString *)uuidString contactIdentifier:(NS
     [[RNCallKeep answeredCallUUIDs] addObject:[action.callUUID.UUIDString lowercaseString]];
     [self configureAudioSession];
     [self sendEventWithNameWrapper:RNCallKeepPerformAnswerCallAction body:@{ @"callUUID": [action.callUUID.UUIDString lowercaseString] }];
-    if ([[RNCallKeep videoCallUUIDs] containsObject:[action.callUUID.UUIDString lowercaseString]]) {
-        // Video call: hold the fulfill until the device is unlocked and the
-        // app is active (or timeout) — fulfilling early makes iOS abandon
-        // the app-foreground handoff and strand the user on the system UI.
-        [RNCallKeep fulfillAnswerAction:action attempt:0];
-    } else {
-        [action fulfill];
-    }
+    // Fulfill immediately (stock behavior): holding the answer open caused
+    // lingering ring banners, system-UI flicker, and raced the multi-device
+    // cancel. The app-foreground handoff is driven by hasVideo +
+    // supportsVideo + the phoneNumber handle, not by fulfillment timing.
+    [action fulfill];
 }
 
 // Ending incoming call
