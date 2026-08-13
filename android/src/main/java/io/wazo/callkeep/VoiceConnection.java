@@ -38,6 +38,7 @@ import org.json.JSONObject;
 import java.util.HashMap;
 
 import static io.wazo.callkeep.Constants.ACTION_ANSWER_CALL;
+import static io.wazo.callkeep.Constants.EXTRA_HAS_VIDEO;
 import static io.wazo.callkeep.Constants.ACTION_AUDIO_SESSION;
 import static io.wazo.callkeep.Constants.ACTION_DTMF_TONE;
 import static io.wazo.callkeep.Constants.ACTION_END_CALL;
@@ -337,13 +338,23 @@ public class VoiceConnection extends Connection {
     @Override
     public void onShowIncomingCallUi() {
         Log.d(TAG, "[VoiceConnection] onShowIncomingCallUi");
-        // Self-managed mode: Android shows NO system call UI — this native
-        // notification (CallStyle on 12+) is the ring, and it works even when
-        // the app process was just spawned for the push (no JS yet).
-        IncomingCallNotification.show(context,
-                handle.get(EXTRA_CALL_UUID),
-                handle.get(EXTRA_CALLER_NAME),
-                handle.get(EXTRA_CALL_NUMBER));
+        // The custom ring surfaces (full-screen IncomingCallActivity +
+        // CallStyle notification + the React in-call screen) belong to VIDEO
+        // calls only — the connle-video SDK displays every call with
+        // hasVideo=true. VOICE calls (the piopiy SDK, hasVideo=false) keep
+        // upstream behavior: the JS event below, and the voice SDK/app owns
+        // its own ring UI. Without this gate, a shared callkeep in a
+        // voice+video app dressed voice calls in the video screens.
+        if (Boolean.parseBoolean(handle.get(EXTRA_HAS_VIDEO))) {
+            // Self-managed mode: Android shows NO system call UI — this
+            // native notification (CallStyle on 12+) is the ring, and it
+            // works even when the app process was just spawned for the push
+            // (no JS yet).
+            IncomingCallNotification.show(context,
+                    handle.get(EXTRA_CALL_UUID),
+                    handle.get(EXTRA_CALLER_NAME),
+                    handle.get(EXTRA_CALL_NUMBER));
+        }
         sendCallRequestToActivity(ACTION_SHOW_INCOMING_CALL_UI, handle);
     }
 
