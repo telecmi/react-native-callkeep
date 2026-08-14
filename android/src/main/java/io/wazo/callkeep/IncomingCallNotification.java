@@ -114,10 +114,17 @@ public class IncomingCallNotification {
         }
     }
 
+    /** Voice ring: notification only (no full-screen call surface). */
     public static void show(Context context, String uuid, String callerName, String number) {
+        show(context, uuid, callerName, number, false);
+    }
+
+    /** @param withCallScreen video calls also open the SDK's full-screen call
+     *  surface (full-screen intent); voice calls get the notification alone. */
+    public static void show(Context context, String uuid, String callerName, String number, boolean withCallScreen) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || uuid == null) return;
         try {
-            wakeScreen(context); // screen ON regardless of FSI permission
+            if (withCallScreen) wakeScreen(context); // screen ON regardless of FSI permission
             cancelAll(context); // one incoming ring at a time — no stacking
             ensureChannel(context);
 
@@ -167,7 +174,9 @@ public class IncomingCallNotification {
                     .setOngoing(true)
                     .setAutoCancel(false);
 
-            builder.setFullScreenIntent(fullScreen, true);
+            if (withCallScreen) {
+                builder.setFullScreenIntent(fullScreen, true);
+            }
             if (openApp != null) {
                 builder.setContentIntent(openApp);
             }

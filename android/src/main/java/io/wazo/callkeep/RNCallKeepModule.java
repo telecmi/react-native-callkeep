@@ -166,8 +166,20 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule implements Life
         delayedEvents = new WritableNativeArray();
     }
 
+    // TWO SDKs, ONE MODULE: setup() overwrites the settings wholesale, so in an
+    // app running both a voice SDK (system-managed) and a video SDK
+    // (self-managed) whichever initializes LAST would decide the phone
+    // account kind for both — non-deterministic, and catastrophic in the
+    // self-managed direction: Android shows no system call UI, so voice calls
+    // would ring invisibly. Rule: any consumer asking for a system-managed
+    // account PINS the app to system-managed (calls always ring — the OS's own
+    // UI — for every SDK). Video-only apps are unaffected: nobody asks for
+    // system-managed, so self-managed and its custom surfaces stay.
+    private static boolean systemManagedPinned = false;
+
     private boolean isSelfManaged() {
         try {
+            if (systemManagedPinned) return false;
             return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && _settings.hasKey("selfManaged") && _settings.getBoolean("selfManaged");
         } catch (Exception e) {
             return false;
@@ -371,6 +383,18 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule implements Life
 
         VoiceConnectionService.setAvailable(false);
         VoiceConnectionService.setInitialized(true);
+        // A consumer that does NOT ask for self-managed needs the OS call UI —
+        // pin the whole app to system-managed (see systemManagedPinned).
+        try {
+            boolean wantsSelfManaged = options != null && options.hasKey("selfManaged")
+                    && options.getBoolean("selfManaged");
+            if (!wantsSelfManaged) {
+                if (!systemManagedPinned) {
+                    Log.d(TAG, "[RNCallKeepModule] system-managed pinned by a consumer that needs the OS call UI");
+                }
+                systemManagedPinned = true;
+            }
+        } catch (Throwable ignored) { }
         this.setSettings(options);
 
         if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

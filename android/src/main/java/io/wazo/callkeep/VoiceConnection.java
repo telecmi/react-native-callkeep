@@ -345,16 +345,18 @@ public class VoiceConnection extends Connection {
         // upstream behavior: the JS event below, and the voice SDK/app owns
         // its own ring UI. Without this gate, a shared callkeep in a
         // voice+video app dressed voice calls in the video screens.
-        if (Boolean.parseBoolean(handle.get(EXTRA_HAS_VIDEO))) {
-            // Self-managed mode: Android shows NO system call UI — this
-            // native notification (CallStyle on 12+) is the ring, and it
-            // works even when the app process was just spawned for the push
-            // (no JS yet).
-            IncomingCallNotification.show(context,
-                    handle.get(EXTRA_CALL_UUID),
-                    handle.get(EXTRA_CALLER_NAME),
-                    handle.get(EXTRA_CALL_NUMBER));
-        }
+        // Self-managed mode: Android shows NO system call UI — this native
+        // notification (CallStyle on 12+) is the ring, and it works even when
+        // the app process was just spawned for the push (no JS yet). VIDEO
+        // calls additionally get the full-screen call surface; VOICE calls get
+        // the notification only, so they can never ring invisibly but also
+        // never inherit the video UI.
+        boolean hasVideo = Boolean.parseBoolean(handle.get(EXTRA_HAS_VIDEO));
+        IncomingCallNotification.show(context,
+                handle.get(EXTRA_CALL_UUID),
+                handle.get(EXTRA_CALLER_NAME),
+                handle.get(EXTRA_CALL_NUMBER),
+                hasVideo);
         sendCallRequestToActivity(ACTION_SHOW_INCOMING_CALL_UI, handle);
     }
 
