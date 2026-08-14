@@ -463,6 +463,12 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule implements Life
             PhoneAccountHandle h = new PhoneAccountHandle(cName, appName);
             TelecomManager tm = (TelecomManager) context.getSystemService(Context.TELECOM_SERVICE);
             if (tm != null) {
+                // SELF-MANAGED accounts only — cycling a CALL_PROVIDER
+                // account destroys its user enablement (incoming calls fail
+                // until the user re-enables it). When the account can't be
+                // inspected, do nothing: no cycling when in doubt.
+                PhoneAccount acct = tm.getPhoneAccount(h);
+                if (acct == null || (acct.getCapabilities() & PhoneAccount.CAPABILITY_SELF_MANAGED) == 0) return;
                 tm.unregisterPhoneAccount(h);
                 Log.d(TAG, "[RNCallKeepModule] purgeZombieTelecomAccount: account cycled at process start");
             }
@@ -477,6 +483,7 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule implements Life
      *  onCreateIncomingConnectionFailed. If we hold no live local connections,
      *  any Telecom-side call is a zombie — cycling the account discards them. */
     private void sweepZombieCalls() {
+        if (!isSelfManaged()) return; // cycling a system-managed account kills its enablement
         if (!VoiceConnectionService.currentConnections.isEmpty()) return; // real call live
         try {
             PhoneAccountHandle h = handle;
@@ -1248,7 +1255,12 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule implements Life
         // forever. With no live local connections there is nothing legitimate
         // to lose — dropping the account makes Telecom discard its calls, and
         // it is re-registered immediately below.
-        if (VoiceConnectionService.currentConnections.isEmpty()) {
+        //
+        // SELF-MANAGED ONLY: cycling a CALL_PROVIDER (system-managed) account
+        // destroys its user enablement — incoming calls then FAIL until the
+        // user re-enables the account in phone settings. Voice SDKs
+        // (system-managed) must never be cycled.
+        if (isSelfManaged() && VoiceConnectionService.currentConnections.isEmpty()) {
             try {
                 telecomManager.unregisterPhoneAccount(handle);
                 Log.d(TAG, "[RNCallKeepModule] phone account re-created (zombie-call sweep)");
